@@ -1,0 +1,40 @@
+{ "name": "pipespawn-pmb",
+  "version": "0.0.1",
+  "description": "Easily connect buffers to a child_process.",
+  "keywords": [ "child process", "pipe", "buffer" ],
+
+  "author": "M.K. (https://github.com/mk-pmb)",
+  "homepage": "https://github.com/mk-pmb/pipespawn-pmb-js/#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mk-pmb/pipespawn-pmb-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mk-pmb/pipespawn-pmb-js/issues"
+  },
+  "contributors": [],
+
+  "private": false, "license": "ISC",
+
+  "main": "pipespawn.js",
+  "scripts": { "test": "nodejs test/usage.js" },
+  "directories": { "test": "test" },
+
+  "dependencies": {
+    "async": "^2.0.1",
+    "collect-stream": "^1.2.1",
+    "tracecb": "^1.0.3"
+  },
+  "devDependencies": {
+    "absdir": "^1.0.2",
+    "async": "^2.0.1",
+    "equal-pmb": "^0.1.13",
+    "usnam-pmb": "^0.2.3"
+  },
+  "optionalDependencies": {}, "peerDependencies": {}, "bundledDependencies": [],
+  "browserify": { "transform": [ "brfs" ] },
+  "engines": { "npm": "*", "node": "*" }, "os": [], "cpu": [],
+
+
+  "npm vs. BOM = Unexpected token": "-*- coding: UTF-8 -*-"
+}
