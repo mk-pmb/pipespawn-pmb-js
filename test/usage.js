@@ -5,7 +5,8 @@
 require('usnam-pmb');
 
 var EX = {}, equal = require('equal-pmb'), async = require('async'),
-  tu = require('./util'), fixture = tu.fixture;
+  wtfnode = require('wtfnode'),
+  tu = require('./lib-test-util'), fixture = tu.fixture;
 
 
 function loadFixtures(done) {
@@ -19,11 +20,14 @@ function loadFixtures(done) {
 
 EX.readmeDemo = function (tests) {
   tests = [ loadFixtures ];
-  function addTest(f) { tests.push(f); }
+  function addTest(n, f) {
+    tests.push(tu.asyncLog('>>> Test:', n, '>>>'),
+      f, tu.asyncLog('<<< Test:', n, '<<<'));
+  }
   //#u
   var pipeSpawn = require('pipespawn-pmb');
 
-  addTest(function err_404(nextTest) {
+  addTest('/err/404', function (nextTest) {
     var cmdSpec = [ '/dev/null/this/program/should/not/exist' ];
     pipeSpawn(cmdSpec, function verify(err, child) {
       equal(err instanceof Error, true);
@@ -36,10 +40,11 @@ EX.readmeDemo = function (tests) {
     });
   });
 
-  addTest(function pipe14(nextTest) {
+  addTest('pipe14', function (nextTest) {
+    this.needsTimeoutReasonTracking();
     var cmdSpec = [ 'bash', fixture.path('pipe14.sh'),
       { stdout: 'str', stderr: { what: 'str', cc: process.stderr } },
-      { fd14: [ 'hello ', 'world\n', null ] },
+      { cfd14: [ 1, 'hello ', 'world\n', null ] },
       ];
     pipeSpawn(cmdSpec, function verify(err, child) {
       equal.lines(child.pipes('stdout').data, [ '',
@@ -59,8 +64,9 @@ EX.readmeDemo = function (tests) {
     });
   });
 
-  addTest(function sox_flac2ogg(nextTest) {
+  addTest('sox: flac -> ogg', function (nextTest) {
     //console.log('base64(clap) =', fixture('clap.flac').toString('base64'));
+    setTimeout(wtfnode.dump, 10e3);
     var cmdSpec = [ 'sox',
       { lang: 'en_US.UTF-8', softTimeoutSec: 15, hardTimeoutSec: 20,
         name: 'readmeDemo sox: flac -> mono -> spectrogram -> ogg' },
@@ -69,16 +75,16 @@ EX.readmeDemo = function (tests) {
 
       '--type', 'flac',
       '/dev/fd/14',
-      { fd14: { what: [ 1, fixture('clap.flac'),   // that's a Buffer
+      { cfd14: { what: [ 1, fixture('clap.flac'),   // that's a Buffer
                 null ],
                 name: 'audioIn' } },
 
       '--type', 'ogg', '--compression', 0,
       '/dev/fd/16',
-      { fd16: { what: 'buf', name: 'audioOut' } },
+      { cfd16: { what: 'buf', name: 'audioOut' } },
 
       'spectrogram', '-o', '/dev/fd/15',
-      { fd15: 'buf' },
+      { cfd15: 'buf' },
 
       { stdout: 'str', stderr: { what: 'str', cc: process.stderr } },
       ];

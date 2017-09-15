@@ -25,8 +25,10 @@ function saveCollectedData(child, fdfx, errColl, data) {
 
 
 function pipeFxCollect(fdfx, done) {
-  var child = this;
-  collectStream(fdfx.stream, function (errColl, data) {
+  var child = this, stm = fdfx.stream;
+
+  if (stm) { return done(null, stm && 'bla'); }
+  collectStream(stm, function (errColl, data) {
     //console.log('collected', errColl);
     saveCollectedData(child, fdfx, errColl, data);
     return done(null);

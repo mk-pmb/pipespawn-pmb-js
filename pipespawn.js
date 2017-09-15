@@ -4,7 +4,7 @@
 
 var EX, async = require('async'), intRgx = /^\d+$/,
   cpSpawn = require('child_process').spawn,
-  lateOnce = require('late-once-pmb'),
+  futureOn = require('future-on-pmb'),
   observeStreamEvents = require('log-stream-events-pmb'),
   unixPipe = require('unix-pipe'),
   pipeFx = require('./src/pipefx/fx.js');
@@ -12,10 +12,12 @@ var EX, async = require('async'), intRgx = /^\d+$/,
 
 function ifObj(x, d) { return ((x && typeof x) === 'object' ? x : d); }
 function isNum(x, no) { return ((x === +x) || no); }
+function ifFun(x, d) { return ((typeof x) === 'function' ? x : d); }
 function sortedKeys(o) { return Object.keys(o).sort(); }
 function fail(why) { throw new Error(why); }
 function mapOrCallIf(x, f) { return (x && (x.map ? x.map(f) : f(x))); }
 function str1ln(x) { return String(x).split(/\s*\{?\n/)[0]; }
+function curry1(cb, a1) { return function (nx) { return cb(a1, nx); }; }
 
 function arrAppend(dest, src) {
   dest.push.apply(dest, src);
@@ -27,18 +29,31 @@ function mapKV(o, f) {
 }
 
 
+
 EX = function (spec, whenChildGone) {
   if (spec && spec.substr) { spec = [spec]; }
-  var meta = { cmd: [], opt: {}, pipes: [] };
+  var meta, chEv = futureOn({ dis1: true });
+  meta = { cmd: [], opt: {}, pipes: [], errors: [], chEv: chEv };
+  chEv.endStreams = [];
+  chEv.reallyGone = whenChildGone;
   spec.reduce(EX.scanOpt, meta);
   EX.scanFdPipeOpts(meta);
   EX.optimizeOptions(meta.opt);
   if (!meta.cmd[0]) { fail('No command name given'); }
+
+  meta.stashAwayError = function (cb) {
+    return function (err, x, y) {
+      var elist = meta.errors;
+      if (err && (elist.indexOf(err) === -1)) { elist.unshift(err); }
+      cb(x, y);
+    };
+  };
+
   async.series([
-    function (then) { return EX.preparePipesPrenatal(meta, then); },
-    function (then) { return EX.actuallySpawn(meta, then); },
-    function (then) { return EX.waitForAllObservers(meta, then); },
-  ], function (err) { return EX.childGone(meta, err, whenChildGone); });
+    curry1(EX.preparePipesPrenatal, meta),
+    curry1(EX.actuallySpawn, meta),
+    curry1(EX.waitForAllObservers, meta),
+  ], meta.stashAwayError(curry1(EX.buryChild, meta)));
 };
 
 
@@ -71,7 +86,7 @@ EX.scanFdPipeOpts = function (meta) {
     if (pp.byName[k]) { fail('Duplicate file descriptor name: ' + k); }
     v.name = k;
     if (n !== +n) { fail('Child file descriptor number required for ' + k); }
-    if (pp.byCfd[n]) { fail('Duplicate file descriptor number: ' + n); }
+    if (pp.byCfd[n]) { fail('Duplicate child file descriptor number: ' + n); }
     pp.byCfd[n] = pp.byName[k] = v;
     pp.push(v);
     Object.assign(v, pipeFx.translateFdWhat(v));
@@ -101,7 +116,7 @@ EX.fdStr2Num = function (s) {
   if (s === 'stdin') { return 0; }
   if (s === 'stdout') { return 1; }
   if (s === 'stderr') { return 2; }
-  s = /^fd(\d+)$/.exec(s);
+  s = /^cfd(\d+)$/.exec(s);
   return (s ? +s[1] : null);
 };
 
@@ -115,12 +130,11 @@ EX.optimizeOptions = function (opt) {
 
 
 EX.actuallySpawn = function (meta, then) {
-  var child, cmd = meta.cmd, opt = meta.opt, stdio = opt.stdio,
-    endStreams = [];
+  var child, cmd = meta.cmd, opt = meta.opt, stdio = opt.stdio;
   if (!stdio) { stdio = opt.stdio = []; }
 
   meta.pipes.forEach(function (p) {
-    if (p.endStream) { endStreams.push(p.endStream); }
+    if (p.endStream) { meta.chEv.endStreams.push(p.endStream); }
     var nm = p.nodeMode;
     if (nm === undefined) { return; }
     stdio[p.cfd] = nm;
@@ -129,23 +143,22 @@ EX.actuallySpawn = function (meta, then) {
 
   try {
     child = cpSpawn(cmd[0], cmd.slice(1), opt);
-    child.errors = [];
   } catch (spawnErr) {
-    child = { errors: [spawnErr] };
+    child = {};
+    meta.errors.push(spawnErr);
   }
   meta.child = child;
   child.name = (opt.name || cmd.join(' ').substr(0, 128));
-  if (endStreams.length) { setImmediate(EX.tryEndStreams, endStreams); }
-  if (child.errors.length) {
-    EX.buryChild(child, { retval: 127, signal: null,
-        code: (child.errors[0].code || 'E_STILLBORN'), stillborn: true });
-    return then(child.errors[0]);
+  if (meta.errors.length) {
+    EX.issueDeathCert(child, { retval: 127, signal: null,
+        code: (meta.errors[0].code || 'E_STILLBORN'), stillborn: true });
+    return then(meta.errors[0]);
   }
 
   observeStreamEvents(child, 'child');
   //observeStreamEvents(child.stdin, 'stdin');
 
-  child.on('error', function (err) { child.errors.push(err); });
+  child.on('error', function (err) { meta.errors.push(err); });
   child.cry = function (why) { child.emit('error', new Error(why)); };
   EX.installExitObservers(child);
   EX.preparePipesPostnatal(meta);
@@ -155,32 +168,47 @@ EX.actuallySpawn = function (meta, then) {
 };
 
 
-EX.tryEndStreams = function (streams) {
-  streams.forEach(function (st) {
-    try { st.end(); } catch (ignore) {}
+EX.buryChild = function (meta) {
+  function notifyParent() {
+    var err = EX.combineChildErrorsWhenDone(meta), cb = meta.chEv.reallyGone;
+    if (err && (!cb)) { throw err; }
+    setImmediate(cb, (err || false), (meta.child || null));
+  }
+
+  async.series([
+    curry1(EX.cleanupFDs, meta),
+  ], meta.stashAwayError(notifyParent));
+};
+
+
+EX.cleanupFDs = function (meta, then) {
+  meta.chEv.endStreams.forEach(function (st) {
+    if (ifFun(st.end)) {
+      try { st.end(); } catch (ignore) {}
+      return;
+    }
   });
+  then();
 };
 
 
 EX.installExitObservers = function (child) {
-  child.once.dying = lateOnce(child, 'exit');
-  child.once.finished = lateOnce(child, 'finished');
   child.causeOfDeath = null;
   if (isNum(child.pid)) {
     child.on('exit', function (retval, signal) {
-      EX.buryChild(child, { retval: retval, signal: signal,
+      EX.issueDeathCert(child, { retval: retval, signal: signal,
         code: null, stillborn: false });
     });
   } else {
     child.once('error', function (err) {
-      EX.buryChild(child, { retval: 127, signal: null,
+      EX.issueDeathCert(child, { retval: 127, signal: null,
         code: (err.code || 'E_STILLBORN'), stillborn: true });
     });
   }
 };
 
 
-EX.buryChild = function (child, cause) {
+EX.issueDeathCert = function (child, cause) {
   if (child.causeOfDeath) { return child.cry('Duplicate exit event'); }
   cause.why = (cause.signal || cause.code || cause.retval);
   child.causeOfDeath = cause;
@@ -200,6 +228,7 @@ EX.preparePipesPrenatal = function (meta, then) {
     if ((t === 'r') || (t === 'w')) { return EX.installUnixPipe(p, t); }
     errs.push('Unsupported mode "' + t + '" for .makePipe for pipe ' + p.name);
   }
+
   meta.pipes.forEach(function (p) {
     var nm = translateNodeMode(p);
     if (nm !== undefined) { p.nodeMode = nm; }
@@ -212,20 +241,12 @@ EX.preparePipesPrenatal = function (meta, then) {
 
 
 EX.installUnixPipe = function (p, ourIntent) {
-  var warp = unixPipe();
-  observeStreamEvents(warp.rd, p.name + '|->');
-  observeStreamEvents(warp.wr, p.name + '->|');
-  if (ourIntent === 'r') {
-    p.stream = warp.rd;
-    p.endStream = p.nodeMode = warp.wr;
-    return;
-  }
-  if (ourIntent === 'w') {
-    p.stream = warp.wr;
-    p.endStream = p.nodeMode = warp.rd;
-    return;
-  }
-  fail('ourIntent must be either "r" or "w".');
+  var pipeStream = unixPipe.oneStream(ourIntent);
+  observeStreamEvents(pipeStream, p.name + '|');
+  p.stream = pipeStream;
+  //p.endStream = pipeStream.peer;
+  console.log(p.name + '|', pipeStream.fd, pipeStream.peerFd);
+  p.nodeMode = pipeStream.peerFd;
 };
 
 
@@ -253,18 +274,17 @@ EX.preparePipesPostnatal = function (meta) {
 };
 
 
-EX.waitForAllObservers = function (meta, then) {
+EX.waitForAllObservers = function (meta, whenAllObs) {
   var obs = EX.makeObservers(meta);
 
   function remindObsNoFail(err) {
-    var child = meta.child;
     if (err) {
-      child.errors = [new Error('Observers should cry, not abort!'),
-        err].concat(child.errors);
+      meta.errors = [new Error('Observers should cry, not abort!'),
+        err].concat(meta.errors);
       // … because abort by one observer might hide errors from other
       // observers, thereby serializing debug efforts to one error per try.
     }
-    return then(err);
+    return whenAllObs();
   }
 
   return async.parallel(obs, remindObsNoFail);
@@ -283,7 +303,7 @@ EX.makeObservers = function (meta) {
       }
       then();
     }
-    child.once.dying(autopsy);
+    meta.chEv.asap('exit', autopsy);
   });
 
   meta.pipes.forEach(function (pipe) {
@@ -295,18 +315,8 @@ EX.makeObservers = function (meta) {
 };
 
 
-EX.childGone = function (meta, err, whenGone) {
-  var child = meta.child;
-  err = EX.combineChildErrorsWhenDone(child, err);
-  if (err && (!whenGone)) { throw err; }
-  setImmediate(whenGone, (err || false), (child || null));
-};
-
-
-EX.combineChildErrorsWhenDone = function (child, cbErr) {
-  if (!child) { return cbErr; }
-  var errs = (child.errors || []), e1;
-  if (cbErr && (errs.indexOf(cbErr) < 0)) { errs = [cbErr].concat(errs); }
+EX.combineChildErrorsWhenDone = function (meta) {
+  var child = meta.child, errs = (meta.errors || []), e1;
   if (!errs.length) { return false; }
   e1 = errs[0];
   e1 = [ 'Spawned child had ' + errs.length + ' errors. ' +

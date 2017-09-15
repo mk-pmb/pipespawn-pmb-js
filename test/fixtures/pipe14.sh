@@ -6,7 +6,7 @@ FN=/dev/fd/14
 # exec 14<''<(date -R) ; ./pipe14.sh ; exec 14<&-
 
 export LANG{,UAGE}=C
-# sleep 0.1s
+sleep 1s
 echo
 
 function check_pipe () {
@@ -21,8 +21,10 @@ function check_pipe () {
 
 check_pipe
 
-{ nl -ba <"$FN"
-} 2>&1 | sed -re 's~^/\S+/pipespawn-pmb/test(/fixtures/)~/…\1~'
+SECONDS=0
+{ timeout 5s nl -ba <"$FN"
+  echo "nl rv=$? after $SECONDS sec"
+} 2>&1 | sed -ure 's~^/\S+/pipespawn-pmb/test(/fixtures/)~/…\1~'
 
 check_pipe
 

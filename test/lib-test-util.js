@@ -30,6 +30,23 @@ EX.enumerateArray = function (a) {
 };
 
 
+EX.asyncLog = function () {
+  var a = arguments;
+  return function (then) {
+    console.log.apply(console, a);
+    return then();
+  };
+};
+
+
+
+
+
+
+
+
+
+
 
 
 module.exports = EX;
