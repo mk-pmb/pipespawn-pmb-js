@@ -1,0 +1,45 @@
+{ "name": "pipespawn-pmb",
+  "version": "0.1.0",
+  "description": "Easily connect buffers to a child_process.",
+  "keywords": [ "child process", "pipe", "buffer" ],
+
+  "author": "M.K. (https://github.com/mk-pmb)",
+  "homepage": "https://github.com/mk-pmb/pipespawn-pmb-js/#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mk-pmb/pipespawn-pmb-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mk-pmb/pipespawn-pmb-js/issues"
+  },
+  "contributors": [],
+
+  "private": false, "license": "ISC",
+
+  "main": "pipespawn.js",
+  "scripts": { "test": "nodejs test/usage.js" },
+  "directories": { "test": "test" },
+
+  "dependencies": {
+    "async": "^2.6.2",
+    "callback-timeout-flexible": "^0.1.9",
+    "collect-stream": "^1.2.1",
+    "future-on-pmb": "^0.1.0",
+    "if-fun": "^1.0.0",
+    "log-stream-events-pmb": "^1.0.6",
+    "pify": "^4.0.1",
+    "unix-pipe": "^0.1.6"
+  },
+  "devDependencies": {
+    "absdir": "^1.0.6",
+    "equal-pmb": "^0.1.20",
+    "usnam-pmb": "^0.2.4",
+    "wtfnode": "^0.8.1"
+  },
+  "optionalDependencies": {}, "peerDependencies": {}, "bundledDependencies": [],
+  "browserify": { "transform": [ "brfs" ] },
+  "engines": { "npm": "*", "node": "*" }, "os": [], "cpu": [],
+
+
+  "npm vs. BOM = Unexpected token": "-*- coding: UTF-8 -*-"
+}
