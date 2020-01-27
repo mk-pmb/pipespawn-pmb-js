@@ -74,8 +74,7 @@ EX.readmeDemo = function (tests) {
       '-R',     // disable randomness
 
       '--type', 'flac', '/dev/fd/14',
-      { cfd14: { what: [ 1, fixture('dtmf0.flac'),   // that's a Buffer
-                null ],
+      { cfd14: { what: [ 1, fixture('dtmf0.flac'), null ],
                 name: 'audioIn' } },
 
       '--type', 'au', '/dev/fd/16',

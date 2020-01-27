@@ -1,5 +1,5 @@
 { "name": "pipespawn-pmb",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Easily connect buffers to a child_process.",
   "keywords": [ "child process", "pipe", "buffer" ],
 
@@ -26,13 +26,13 @@
     "collect-stream": "^1.2.1",
     "future-on-pmb": "^0.1.0",
     "if-fun": "^1.0.0",
-    "log-stream-events-pmb": "^1.0.6",
     "pify": "^4.0.1",
     "unix-pipe": "^0.1.6"
   },
   "devDependencies": {
     "absdir": "^1.0.6",
     "equal-pmb": "^0.1.20",
+    "log-stream-events-pmb": "^1.0.6",
     "usnam-pmb": "^0.2.4",
     "wtfnode": "^0.8.1"
   },
